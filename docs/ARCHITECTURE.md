@@ -30,7 +30,7 @@ flowchart TB
   end
   WB -->|"ssh -tt + native-ssh-session.sh"| TMUX
   WB -->|"ssh + python3 snippet (read-only scan)"| JSONL
-  MCP -.->|"ssh -M -R 18765 -R 49620 (ControlMaster, one per node)"| CJ
+  MCP -.->|"ssh -M -R 18765 (ControlMaster; raw EDA opt-in)"| CJ
   SYN <-->|"two-way sync, folder id per node"| RS
 ```
 
@@ -58,11 +58,11 @@ Each node owns **one** local folder, **one** Syncthing folder id and **one** tun
 `provisionLinuxNode()` in `server/server.js`:
 
 1. creates the local folder and registers it as a Syncthing folder (Mac side);
-2. builds the MCP reverse tunnel: `ssh -M -S <sock> -Nf -R 18765:127.0.0.1:18765 -R 49620:127.0.0.1:49620 <host>`;
+2. builds the MCP reverse tunnel: `ssh -M -S <sock> -Nf -R 127.0.0.1:18765:127.0.0.1:18765 <host>` (owned by the MCP watchdog; raw EDA forwarding is opt-in);
 3. runs a small `python3` snippet on the server that
    - creates the remote work dir (falls back to `~/Documents/work` / `~/work` for non-root users),
    - writes the `mac-industrial` MCP server (URL + `Authorization: Bearer <token>`) into `~/.claude.json`,
-   - adds `mcp__mac-industrial` to `permissions.allow` and `mac_host_exec` to `permissions.ask` in `~/.claude/settings.json`,
+   - removes legacy blanket allow rules for this server and adds `mac_host_exec` to `permissions.ask` in `~/.claude/settings.json`,
    - reports the server's Syncthing device id;
 4. **pairs Syncthing in both directions** using each side's local REST API (`PUT /rest/config/devices/<id>` + `PUT /rest/config/folders/<id>`), so files start syncing without manual steps.
 
@@ -116,3 +116,7 @@ See [SECURITY.md](SECURITY.md). In short: both HTTP servers listen on loopback o
 ## 7. Process model
 
 `scripts/start.sh` launches `mcp-server` and `workbench` as detached processes (new session via `setsid`), writes pid files to `$TAKT_HOME/run/` and logs to `$TAKT_HOME/logs/`. The workbench also supervises the MCP server (restarts it if `/system-status` stops answering).
+
+## Personal-client engineering changes
+
+The execution model above is retained. Core persistence, provisioning, MCP request context, tool dispatch and watchdog logic now live in separate modules. See the [current module map and upgrade notes](PERSONAL-CLIENT-UPGRADE.md#module-map). File previews can fall back to an SSH-backed local cache when a file is not available in the Syncthing mirror; they are not exclusively local-mirror reads.

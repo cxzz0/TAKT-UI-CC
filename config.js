@@ -22,38 +22,31 @@ function syncthingConfigCandidates() {
 }
 
 const fs = require('node:fs');
-const crypto = require('node:crypto');
-
-/**
- * Shared secret protecting the MCP endpoint (which can run commands on this machine).
- * Generated once, stored with mode 0600, written into each remote node's ~/.claude.json on provisioning.
- */
+const { getOrCreateToken } = require('./lib/mcp-token');
 function getMcpToken() {
-  if (process.env.TAKT_MCP_TOKEN) return process.env.TAKT_MCP_TOKEN;
-  const file = path.join(TAKT_HOME, 'mcp-token');
-  try {
-    const existing = fs.readFileSync(file, 'utf8').trim();
-    if (existing) return existing;
-  } catch {}
-  const token = crypto.randomBytes(24).toString('hex');
-  fs.mkdirSync(TAKT_HOME, { recursive: true });
-  fs.writeFileSync(file, token + '\n', { mode: 0o600 });
-  return token;
+  return getOrCreateToken(TAKT_HOME, process.env.TAKT_MCP_TOKEN);
 }
+function port(value, fallback, name, max = 65535) {
+  const number = Number(value || fallback);
+  if (!Number.isInteger(number) || number < 1 || number > max) throw new Error(`Invalid ${name}: ${value}`);
+  return number;
+}
+const MCP_HOST = process.env.TAKT_MCP_HOST || '127.0.0.1';
+if (MCP_HOST !== '127.0.0.1') throw new Error('TAKT_MCP_HOST must be 127.0.0.1 (local desktop client)');
 
 module.exports = {
   HOME,
   getMcpToken,
-  MCP_HOST: process.env.TAKT_MCP_HOST || '127.0.0.1',
+  MCP_HOST,
   TAKT_HOME,
   REPO_ROOT: __dirname,
 
   // Web workbench (browser / desktop shell loads this)
-  PORT: Number(process.env.TAKT_PORT || process.env.PORT || 3080),
+  PORT: port(process.env.TAKT_PORT || process.env.PORT, 3080, 'TAKT_PORT'),
   // Local MCP server, reverse-tunnelled to every Linux node
-  MCP_PORT: Number(process.env.TAKT_MCP_PORT || process.env.MAC_MCP_PORT || 18765),
+  MCP_PORT: port(process.env.TAKT_MCP_PORT || process.env.MAC_MCP_PORT, 18765, 'TAKT_MCP_PORT'),
   // EasyEDA bridge (optional MCP tool pack)
-  EDA_PORT: Number(process.env.TAKT_EDA_PORT || 49620),
+  EDA_PORT: port(process.env.TAKT_EDA_PORT, 49620, 'TAKT_EDA_PORT', 65526),
 
   NODES_FILE: path.join(TAKT_HOME, 'nodes.json'),
   SESSION_TITLES_FILE: path.join(TAKT_HOME, 'session-titles.json'),
@@ -62,7 +55,11 @@ module.exports = {
   DEFAULT_WORK_DIR: path.join(TAKT_HOME, 'work'),
 
   // ControlMaster sockets for the MCP reverse tunnels (one per node)
-  SSH_SOCKET_DIR: path.join(HOME, '.ssh', 'sockets'),
+  SSH_SOCKET_DIR: path.resolve(process.env.TAKT_SSH_SOCKET_DIR || path.join(HOME, '.ssh', 'sockets')),
+  ENABLE_EDA_TUNNEL: process.env.TAKT_ENABLE_EDA_TUNNEL === '1',
+  AUTO_ALLOW_HOST_EXEC: process.env.TAKT_AUTO_ALLOW_HOST_EXEC === '1',
+  SUPERVISE_MCP: process.env.TAKT_SUPERVISE_MCP !== '0',
+  WATCHDOG_ENABLED: process.env.TAKT_WATCHDOG !== '0',
 
   // Optional: also drop a convenience symlink "<alias> -> <local work dir>" into this folder
   WORKSPACE_LINK_DIR: process.env.TAKT_WORKSPACE_LINK_DIR || '',

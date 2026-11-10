@@ -21,7 +21,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDe
         if let plist = Bundle.main.object(forInfoDictionaryKey: "TAKTRepoPath") as? String, !plist.isEmpty { return plist }
         return FileManager.default.currentDirectoryPath
     }()
+    var resolvedWorkbenchURL: String?
     var workbenchURLString: String {
+        if let resolved = resolvedWorkbenchURL { return resolved }
         let port = ProcessInfo.processInfo.environment["TAKT_PORT"] ?? "3080"
         return "http://127.0.0.1:\(port)"
     }
@@ -226,13 +228,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDe
 
     func startBackgroundServicesAsync() {
         let script = startScriptPath
+        let configScript = repoPath + "/scripts/runtime-config.sh"
         DispatchQueue.global(qos: .utility).async {
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/bin/bash")
-            task.arguments = ["-c", "'\(script)' </dev/null >/tmp/takt-workbench-boot.log 2>&1 &"]
             var env = ProcessInfo.processInfo.environment
             env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:" + (env["PATH"] ?? "")
+            // Resolve the same $TAKT_HOME/env as start.sh, including a custom UI port.
+            let configTask = Process()
+            let pipe = Pipe()
+            configTask.executableURL = URL(fileURLWithPath: "/bin/bash")
+            configTask.arguments = [configScript]
+            configTask.environment = env
+            configTask.standardOutput = pipe
+            configTask.standardError = FileHandle.nullDevice
+            if (try? configTask.run()) != nil {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                configTask.waitUntilExit()
+                if let config = (try? JSONSerialization.jsonObject(with: data)) as? [String: String],
+                   let url = config["url"] {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.resolvedWorkbenchURL = url
+                        self?.loadWorkbenchURL()
+                    }
+                }
+            }
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/bin/bash")
+            task.arguments = [script]
             task.environment = env
+            task.standardInput = FileHandle.nullDevice
+            task.standardOutput = FileHandle.nullDevice
+            task.standardError = FileHandle.nullDevice
             try? task.run()
         }
     }

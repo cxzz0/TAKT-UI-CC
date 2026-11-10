@@ -3,14 +3,19 @@
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export TAKT_HOME="${TAKT_HOME:-$HOME/.takt-ai}"
-export TAKT_PORT="${TAKT_PORT:-3080}"
-export TAKT_MCP_PORT="${TAKT_MCP_PORT:-18765}"
+# Load user overrides before deriving ports, log and PID directories.
+if [ -f "$TAKT_HOME/env" ]; then
+  set -a
+  . "$TAKT_HOME/env"
+  set +a
+fi
+export TAKT_PORT="${TAKT_PORT:-${PORT:-3080}}"
+export TAKT_MCP_PORT="${TAKT_MCP_PORT:-${MAC_MCP_PORT:-18765}}"
+export TAKT_EDA_PORT="${TAKT_EDA_PORT:-49620}"
+export TAKT_SSH_SOCKET_DIR="${TAKT_SSH_SOCKET_DIR:-$HOME/.ssh/sockets}"
 LOG_DIR="$TAKT_HOME/logs"
 RUN_DIR="$TAKT_HOME/run"
-mkdir -p "$LOG_DIR" "$RUN_DIR" "$HOME/.ssh/sockets"
-
-# Optional per-user overrides (KEY=value lines), e.g. TAKT_PORT=3090
-[ -f "$TAKT_HOME/env" ] && set -a && . "$TAKT_HOME/env" && set +a
+mkdir -p "$LOG_DIR" "$RUN_DIR" "$TAKT_SSH_SOCKET_DIR"
 
 c_green() { printf '\033[32m%s\033[0m\n' "$*"; }
 c_yellow() { printf '\033[33m%s\033[0m\n' "$*"; }

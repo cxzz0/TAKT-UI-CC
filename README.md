@@ -163,3 +163,7 @@ TAKT-UI-CC/
 ## Credits & licence
 
 MIT — see [LICENSE](LICENSE). Bundles [xterm.js](https://github.com/xtermjs/xterm.js) (MIT); uses [node-pty](https://github.com/microsoft/node-pty), [ws](https://github.com/websockets/ws) and [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) (MIT). Third-party notices: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Personal multi-machine fork
+
+See [upgrade notes and module boundaries](docs/PERSONAL-CLIENT-UPGRADE.md) for enforced MCP authentication, node isolation, portable configuration, and migration from older installations.

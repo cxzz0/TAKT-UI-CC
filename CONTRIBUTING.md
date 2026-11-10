@@ -16,6 +16,7 @@ bash scripts/start.sh
 
 ```bash
 npm run lint      # eslint (no-undef catches most refactoring slips)
+npm test          # isolated behavioral and HTTP regression tests
 npm run check     # node --check + bash -n on all scripts
 ```
 
@@ -25,5 +26,5 @@ CI runs the same plus a smoke test (`scripts/smoke-test.sh`): fresh data dir →
 
 - No machine-specific paths, IPs, host names or device ids in code or docs — everything goes through `config.js` / env vars / `nodes.json`.
 - Anything that executes commands on the user's machine must stay behind the MCP token and loopback binding.
-- The UI is a single file (`server/public/index.html`); keep it dependency-free (no build step).
+- The UI uses `server/public/index.html` and `server/public/assets/`; keep it dependency-free (no build step). New browser modules are linted.
 - i18n: UI strings are currently Chinese. A string-table refactor is the most welcome contribution — open an issue first.

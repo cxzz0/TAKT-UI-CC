@@ -26,11 +26,11 @@ TAKT-UI-CC 在你的 Mac 上有三个运行单元，每台服务器上只有很�
 ### 保存节点时发生了什么（`provisionLinuxNode()`）
 
 1. 创建本地目录，并在本机 Syncthing 中注册该文件夹；
-2. 建立 MCP 反向隧道：`ssh -M -S <sock> -Nf -R 18765:127.0.0.1:18765 -R 49620:127.0.0.1:49620 <host>`；
+2. 建立 MCP 反向隧道：`ssh -M -S <sock> -Nf -R 127.0.0.1:18765:127.0.0.1:18765 <host>`（由 MCP 守护服务统一管理；原始 EDA 端口转发需要显式开启）；
 3. 在服务器上运行一小段 `python3`：
    - 创建远端工作目录（非 root 自动回退到 `~/Documents/work` / `~/work`）；
    - 把 `mac-industrial` MCP（URL + `Authorization: Bearer <token>`）写入 `~/.claude.json`；
-   - 在 `~/.claude/settings.json` 里把 `mcp__mac-industrial` 加入 `permissions.allow`，`mac_host_exec` 加入 `permissions.ask`；
+   - 在 `~/.claude/settings.json` 里移除旧版对整个 MCP 服务的自动放行规则，把 `mac_host_exec` 加入 `permissions.ask`；
    - 上报服务器的 Syncthing 设备 ID；
 4. 通过两端各自的本地 REST API（`PUT /rest/config/devices/<id>` + `PUT /rest/config/folders/<id>`）**双向配对 Syncthing**，无需手动操作即可开始同步。
 
@@ -84,3 +84,5 @@ TAKT-UI-CC 在你的 Mac 上有三个运行单元，每台服务器上只有很�
 ## 7. 进程模型
 
 `scripts/start.sh` 以脱离终端的独立会话（`setsid`）启动 `mcp-server` 和 `workbench`，pid 写入 `$TAKT_HOME/run/`，日志在 `$TAKT_HOME/logs/`。工作台还会监管 MCP 服务（`/system-status` 不响应就重启它）。
+
+个人多机器客户端的当前模块划分和升级步骤见[升级说明](PERSONAL-CLIENT-UPGRADE.md)。

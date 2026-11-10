@@ -1,7 +1,7 @@
 const globals = require('globals');
 
 module.exports = [
-  { ignores: ['node_modules/**', 'build/**', 'desktop/**', 'server/public/**'] },
+  { ignores: ['node_modules/**', 'build/**', 'desktop/**', 'server/public/vendor/**'] },
   {
     files: ['**/*.js'],
     languageOptions: {
@@ -15,4 +15,5 @@ module.exports = [
       'no-empty': 'off',
     },
   },
+  { files: ['server/public/assets/*.js'], languageOptions: { sourceType: 'script', globals: { ...globals.browser } } },
 ];

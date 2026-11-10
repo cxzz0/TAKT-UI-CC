@@ -156,3 +156,7 @@ TAKT-UI-CC/
 ## 许可
 
 MIT，见 [LICENSE](LICENSE)。内置 [xterm.js](https://github.com/xtermjs/xterm.js)（MIT）；依赖 [node-pty](https://github.com/microsoft/node-pty)、[ws](https://github.com/websockets/ws)、[SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)（MIT）。第三方声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+## 个人多机器客户端改进
+
+强制 MCP 鉴权、节点上下文隔离、可迁移配置、核心模块拆分和旧版迁移步骤，见[升级说明](docs/zh-CN/PERSONAL-CLIENT-UPGRADE.md)。

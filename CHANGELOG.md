@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — personal multi-machine client
+
+- Enforce MCP bearer authentication across transports and management actions; migrate remote credentials and host-exec permissions safely.
+- Scope MCP execution and session mutations by node; remove machine-specific defaults.
+- Share runtime configuration, isolate tunnel sockets and stop killing unrelated remote port owners.
+- Extract core services, SQLite repository, MCP modules and browser assets; add regression tests and upgrade documentation.
+
 ## Unreleased — layout cleanup + DockTerm rework
 
 **Layout**

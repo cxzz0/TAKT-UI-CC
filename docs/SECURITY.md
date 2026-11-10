@@ -6,15 +6,15 @@ TAKT-UI-CC connects remote servers to *your* computer. That is powerful, so plea
 
 | Asset | Who can reach it | Protection |
 |---|---|---|
-| Workbench UI/API (`:3080`) | Local processes and local browsers | Bound to `127.0.0.1`; every request's `Host` must be loopback (blocks DNS rebinding); state-changing requests with a foreign `Origin` are rejected (blocks CSRF from web pages); WebSocket upgrade checks the same. |
-| MCP server (`:18765`) | Local processes + connected servers via `ssh -R` | Bound to `127.0.0.1`; `/mcp`, `/messages`, `/sse` need `Authorization: Bearer <token>` (constant-time compare); **no CORS headers**; Host/Origin validation. `/health`, `/system-status`, `/viewer`, `/work/*` are read-only and token-free (they never run code). |
+| Workbench UI/API (`:3080`) | Local processes and local browsers | Bound to `127.0.0.1`; every request's `Host` must be loopback (blocks DNS rebinding); requests with a foreign `Origin` are rejected (blocks CSRF from web pages); WebSocket upgrade checks the same. |
+| MCP server (`:18765`) | Local processes + connected servers via `ssh -R` | Bound to `127.0.0.1`; `/mcp`, `/messages`, `/sse`, `/system-heal`, `/remote-desktop` need `Authorization: Bearer <token>` (constant-time compare); **no CORS headers**; Host/Origin validation including the exact port; other loopback web origins are rejected. Authentication cannot be disabled by `TAKT_REQUIRE_MCP_TOKEN`. `/health`, `/system-status`, `/viewer`, `/work/*` are read-only and token-free (they never run code). |
 | MCP token | Anyone who can read `~/.takt-ai/mcp-token` (mode 0600) or a node's `~/.claude.json` | Random 192-bit token generated on first start. Rotate by deleting the file, restarting and re-saving each node. |
-| `mac_host_exec` | Claude on a connected server, after the permission prompt | Written as an **ask** rule in the server's `~/.claude/settings.json`. Opt-in to auto-approval with `TAKT_AUTO_ALLOW_HOST_EXEC=1`. |
+| `mac_host_exec` | Claude on a connected server, after the permission prompt | Client policy only: written as an **ask** rule in the server's `~/.claude/settings.json`. Opt-in to auto-approval with `TAKT_AUTO_ALLOW_HOST_EXEC=1`. |
 | SSH | Your normal keys | TAKT only shells out to your `ssh`; it stores no passwords or keys. |
 
 ## What a connected server can do
 
-A connected node can call every MCP tool: render in Blender, flash firmware, take **screenshots of your screen**, and — if you approve — **run shell commands on your Mac**. Anyone who can log into that server as the SSH user can read the token from `~/.claude.json` and reach `127.0.0.1:18765` on the server, i.e. gets the same capabilities. Consequences:
+A connected node can call every MCP tool: render in Blender, flash firmware, take **screenshots of your screen**, and **run shell commands on your Mac**. Claude Code prompts for `mac_host_exec` by default, but a process holding the token can call it directly without going through Claude Code. Anyone who can log into that server as the SSH user can read the token from `~/.claude.json` and reach `127.0.0.1:18765` on the server, i.e. gets the same capabilities. Consequences:
 
 - Only connect machines and accounts you fully trust.
 - Don't connect shared / multi-user servers unless you accept that other users with shell access could use the tunnel (the token is only readable by the SSH user, but root can read everything).
@@ -36,3 +36,9 @@ A connected node can call every MCP tool: render in Blender, flash firmware, tak
 ## Reporting a vulnerability
 
 Please open a **private security advisory** on GitHub (*Security → Report a vulnerability*) instead of a public issue. Include steps to reproduce; you'll get an answer within a few days.
+
+## Instance and node boundaries
+
+Node contexts isolate routing, not privileges: all connected accounts are trusted and share this personal workstation's capabilities. Relative/remote paths stay on the selected mirror; explicit absolute host paths and shell/Python execution remain available to authenticated tools.
+
+Raw EasyEDA bridge forwarding is disabled by default because it is outside MCP bearer authentication. `TAKT_ENABLE_EDA_TUNNEL=1` explicitly grants direct access to that bridge. Repair never kills arbitrary remote port owners. See [upgrade notes](PERSONAL-CLIENT-UPGRADE.md) for old tunnel cleanup and remote credential migration.

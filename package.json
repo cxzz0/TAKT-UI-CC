@@ -1,7 +1,7 @@
 {
   "name": "takt-ui-cc",
   "version": "1.0.0",
-  "description": "TAKT-UI-CC: a multi-machine desktop workbench for Claude Code over SSH — project/session sidebar, persistent tmux terminals, local file preview, Syncthing sync and a reverse-tunnelled local MCP server.",
+  "description": "TAKT-UI-CC: a multi-machine desktop workbench for Claude Code over SSH \u2014 project/session sidebar, persistent tmux terminals, local file preview, Syncthing sync and a reverse-tunnelled local MCP server.",
   "license": "MIT",
   "private": false,
   "type": "commonjs",
@@ -15,8 +15,10 @@
     "stop": "bash scripts/stop.sh",
     "doctor": "bash scripts/doctor.sh",
     "lint": "eslint .",
-    "check": "node --check config.js && node --check server/server.js && node --check mcp-server/server.js && bash -n server/native-ssh-session.sh && bash -n scripts/*.sh",
-    "postinstall": "node scripts/postinstall.js"
+    "check": "node scripts/check.js",
+    "postinstall": "node scripts/postinstall.js",
+    "test": "node --test test/*.test.js",
+    "test:smoke": "bash scripts/smoke-test.sh"
   },
   "dependencies": {
     "node-pty": "^1.1.0",

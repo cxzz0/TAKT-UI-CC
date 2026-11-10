@@ -9,9 +9,15 @@ All settings are optional — defaults work out of the box. Set variables in you
 | `TAKT_HOME` | `~/.takt-ai` | all | Data directory (see layout below) |
 | `TAKT_PORT` (or `PORT`) | `3080` | workbench, desktop app | Web UI / REST / WebSocket port. Always bound to `127.0.0.1`. |
 | `TAKT_MCP_PORT` (or `MAC_MCP_PORT`) | `18765` | MCP server, tunnels | Local MCP port; the same number is forwarded on every server (`ssh -R`). |
-| `TAKT_MCP_HOST` | `127.0.0.1` | MCP server | Bind address. **Do not change** unless you fully understand [the risk](SECURITY.md). |
+| `TAKT_MCP_HOST` | `127.0.0.1` | MCP server | Fixed loopback binding. Other values are rejected at startup. |
 | `TAKT_MCP_TOKEN` | *(generated)* | MCP server, provisioning | Override the bearer token instead of using `$TAKT_HOME/mcp-token`. |
-| `TAKT_EDA_PORT` | `49620` | MCP server, tunnels | First port of the optional EasyEDA bridge range (`+0…+9`); also forwarded to servers. |
+| `TAKT_EDA_PORT` | `49620` | MCP server, tunnels | First port of the optional EasyEDA bridge range (`+0…+9`); forwarded only when `TAKT_ENABLE_EDA_TUNNEL=1` (the base port only). |
+| `TAKT_ENABLE_EDA_TUNNEL` | unset | tunnels | `1` forwards the raw EDA base port. Off by default; authenticated EDA MCP tools work without it. |
+| `TAKT_SSH_SOCKET_DIR` | `~/.ssh/sockets` | services, scripts | ControlMaster sockets; names are hashed by data directory, node and ports. |
+| `TAKT_NODE_ID` | unset | MCP stdio | Select the node explicitly when using `--stdio` with multiple configured nodes. |
+| `TAKT_WATCHDOG` | `1` | MCP server | `0` disables automatic/forced bridge and tunnel repair for isolated tests. |
+| `TAKT_SUPERVISE_MCP` | `1` | workbench | `0` disables spawning/healing the MCP daemon (tests or an external service manager). |
+| `TAKT_START_SYNCTHING` | `1` | start script | `0` skips starting the optional Homebrew Syncthing service. |
 | `TAKT_AUTO_ALLOW_HOST_EXEC` | unset | provisioning | `1` → write an *allow* rule for `mac_host_exec` on servers instead of *ask*. |
 | `TAKT_WORKSPACE_LINK_DIR` | unset | workbench | If set, `<alias> → <local work dir>` symlinks are created in this folder (handy to open mirrors from an IDE workspace). |
 | `TAKT_SYNCTHING_URL` | `http://127.0.0.1:8384` | workbench, MCP server | Local Syncthing REST endpoint. |
@@ -60,7 +66,9 @@ See [`examples/nodes.example.json`](../examples/nodes.example.json).
 |---|---|---|
 | 3080 | Mac, loopback | Workbench UI/API |
 | 18765 | Mac loopback **and** each server's loopback (via `ssh -R`) | MCP |
-| 49620–49629 | same | Optional EasyEDA bridge |
+| 49620–49629 | same | Optional EasyEDA bridge; raw base-port forwarding is opt-in |
 | 8384 / 22000 | Syncthing | GUI+REST (loopback) / sync traffic (open 22000 on servers for direct connections) |
 
 Run several instances side by side (e.g. for testing) by changing `TAKT_HOME`, `TAKT_PORT`, `TAKT_MCP_PORT` **and** `TAKT_EDA_PORT`.
+
+For existing installations, see [personal-client upgrade notes](PERSONAL-CLIENT-UPGRADE.md), including token rotation, permission migration and port conflicts.
