@@ -473,5 +473,5 @@ function startBridgeAndTunnelWatchdog() {
 
 
 
-return { ensureEasyEdaBridge, nodeTunnelSock, healNodeTunnel, runSystemWatchdogCycle, startBridgeAndTunnelWatchdog, systemStatusState, stop: async () => { if (windows) await windowsTunnels.stopAll(); } };
+return { ensureEasyEdaBridge, nodeTunnelSock, healNodeTunnel, ensureNodeTunnel: node => windows ? windowsTunnels.ensure(node) : healNodeTunnel(node, false), runSystemWatchdogCycle, startBridgeAndTunnelWatchdog, systemStatusState, stop: async () => { if (windows) await windowsTunnels.stopAll(); } };
 };

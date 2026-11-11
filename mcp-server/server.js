@@ -101,7 +101,8 @@ function runCommand(cmd, args, options = {}) {
 // ============================================================================
 const toolRegistry = require('./tools/registry');
 const TOOLS = platform.isWindows ? windowsTools.describe(toolRegistry) : toolRegistry;
-const { ensureEasyEdaBridge, nodeTunnelSock, healNodeTunnel, runSystemWatchdogCycle, startBridgeAndTunnelWatchdog, systemStatusState, stop: stopWatchdog } = require('./watchdog')({ cfg, runCommand, loadConfiguredNodes, TOOLS, MCP_TOKEN });
+const { ensureEasyEdaBridge, nodeTunnelSock, healNodeTunnel, ensureNodeTunnel, runSystemWatchdogCycle, startBridgeAndTunnelWatchdog, systemStatusState, stop: stopWatchdog } = require('./watchdog')({ cfg, runCommand, loadConfiguredNodes, TOOLS, MCP_TOKEN });
+const remoteDesktop = require('./remote-desktop')({ runCommand, ensureNodeTunnel, healNodeTunnel, nodeTunnelSock });
 
 const executeCommonTool = require('./tools')({ cfg, PATHS, resolveWorkPath, rewriteScriptPaths, getActiveNodeConfig, runCommand, ensureEasyEdaBridge, EDA_PORT });
 async function executeTool(name, args = {}) {
@@ -214,49 +215,9 @@ if (process.argv.includes('--stdio')) {
         res.end(JSON.stringify({ ok: false, error: '未配置可用的远程桌面节点' }));
         return;
       }
-      const webPort = Number((node && node.desktopWebPort) || 16080);
-      const vncPort = Number((node && node.desktopVncPort) || 15901);
-      const webUrl = `http://127.0.0.1:${webPort}/vnc.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000`;
-      const vncUrl = `vnc://:instabox@127.0.0.1:${vncPort}`;
-
-      if (action === 'open-native-vnc') {
-        await runCommand('open', [vncUrl], { timeoutMs: 4000 });
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: true, nodeId: node.id, sshHost: node.sshHost, webPort, vncPort, webUrl, vncUrl }));
-        return;
-      }
-
-      const sock = nodeTunnelSock(node);
-      if (action === 'start') {
-        // Ensure local port forward for webPort is listening; if not, heal tunnel
-        const lsofCheck = await runCommand('lsof', ['-nP', `-iTCP:${webPort}`, '-sTCP:LISTEN'], { timeoutMs: 2000 });
-        if (lsofCheck.exitCode !== 0 || !lsofCheck.stdout.trim()) {
-          await healNodeTunnel(node, false);
-        }
-      }
-
-      let remoteCmd = 'printf "start\\n1440x900\\ntakt-ui\\n" | /usr/local/bin/instabox-desktop';
-      if (action === 'takeover') {
-        remoteCmd = 'printf "takeover\\n1440x900\\ntakt-ui\\n" | /usr/local/bin/instabox-desktop';
-      } else if (action === 'handback') {
-        remoteCmd = 'printf "handback\\n1440x900\\ntakt-ui\\n" | /usr/local/bin/instabox-desktop';
-      } else if (action === 'open-browser') {
-        remoteCmd = 'DISPLAY=:1 nohup /usr/local/bin/chromium https://www.google.com >/dev/null 2>&1 </dev/null & printf "status\\n1440x900\\ntakt-ui\\n" | /usr/local/bin/instabox-desktop';
-      }
-
-      const sshOut = await runCommand('ssh', ['-S', sock, '-o', 'ConnectTimeout=4', node.sshHost, remoteCmd], { timeoutMs: 6000 });
-      const controller = (sshOut.stdout || '').includes('controller human') ? 'user' : 'agent';
+      const result = await remoteDesktop(node, action);
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({
-        ok: sshOut.exitCode === 0,
-        nodeId: node.id,
-        sshHost: node.sshHost,
-        webPort,
-        vncPort,
-        webUrl,
-        vncUrl,
-        controller,
-      }));
+      res.end(JSON.stringify(result));
       return;
     }
 

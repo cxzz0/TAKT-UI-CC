@@ -103,6 +103,27 @@ test('Windows env supports BOM, CRLF, quoted paths and literal values', t => {
   assert.equal(env.TAKT_HOME, 'C:\\用户\\my data'); assert.equal(env.TAKT_PORT, '31999'); assert.equal(env.TAKT_EXAMPLE, '$literal');
 });
 
+test('Windows remote desktop uses its managed tunnel and platform opener without Unix commands', async () => {
+  const calls = [], ensured = [];
+  const node = { id: 'a', sshHost: 'host-a', desktopWebPort: 16080, desktopVncPort: 15901 };
+  const desktop = require('../mcp-server/remote-desktop')({ windows: true,
+    ensureNodeTunnel: async n => ensured.push(n.id),
+    healNodeTunnel: async () => { throw new Error('Must not replace the managed tunnel'); },
+    nodeTunnelSock: () => { throw new Error('Windows has no ControlMaster socket'); },
+    openTarget: url => ({ command: 'windows-opener', args: [url] }),
+    runCommand: async (command, args) => { calls.push({ command, args }); return { exitCode: 0, stdout: 'controller human' }; },
+  });
+  const started = await desktop(node, 'start');
+  assert.equal(started.ok, true); assert.equal(started.controller, 'user');
+  assert.equal(calls[0].command, 'ssh');
+  assert.ok(calls[0].args.includes('ControlMaster=no'));
+  assert.ok(!calls[0].args.includes('-S'));
+  assert.ok(calls[0].args.includes('host-a'));
+  const opened = await desktop(node, 'open-native-vnc');
+  assert.equal(opened.ok, true); assert.deepEqual(ensured, ['a', 'a']);
+  assert.deepEqual(calls[1], { command: 'windows-opener', args: [opened.vncUrl] });
+});
+
 test('Windows token ACL only grants the current user', { skip: !platform.isWindows }, t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'takt-acl-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
