@@ -22,6 +22,14 @@ async function freePort() {
   const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port;
 }
 
+test('OpenSSH preserves the session agent pipe through environment lookup instead of config escaping', async () => {
+  const address = '\\\\.\\pipe\\takt-ssh-test';
+  const env = platform.childEnv({ TAKT_SSH_AGENT: address, SSH_AUTH_SOCK: 'a-different-system-agent' });
+  assert.equal(env.SSH_AUTH_SOCK, address);
+  const result = await exec(platform.ssh, sessionSshArgs(['-G', '-F', 'none', 'test@localhost'], env), { env, windowsHide: true, timeout: 8000 });
+  assert.match(result.stdout, /^identityagent SSH_AUTH_SOCK\r?$/m);
+});
+
 test('session terminal retains Documents/work, work and home fallback when its configured directory is unusable', { skip: process.platform === 'win32' }, async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'takt-cwd-test-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
