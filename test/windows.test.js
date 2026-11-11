@@ -26,6 +26,11 @@ test('Windows drive paths, UNC, Unicode, line numbers and explicit node selectio
   assert.equal(maps.resolve('outside.txt', '/opt/project', 'a').remotePath, '/opt/project/outside.txt');
   assert.equal(maps.resolve(nodes[1].localWorkDir, '/srv/a', 'a').node.id, 'a');
   assert.throws(() => maps.resolve('/root/work/x', '/root/work', 'missing'), /Unknown node/);
+  for (const outside of ['C:\\Windows\\secret.txt', '\\\\other\\private\\secret.txt', '/srv/a/../../secret.txt', '../secret.txt']) {
+    assert.equal(maps.resolve(outside, '/srv/a', 'a').localPath, '', outside);
+  }
+  const mapped = mapper([{ ...nodes[0], projectMappings: [{ localPath: 'D:\\project', remotePath: '/project' }] }], nodes[0].localWorkDir, '', path.win32);
+  assert.equal(mapped.resolve('/project/../../secret.txt', '/srv/a', 'a').localPath, '');
   const context = createRequestContext({ loadNodes: () => nodes, defaultWorkDir: nodes[0].localWorkDir, pathImpl: path.win32 });
   context.run('b', () => assert.equal(context.resolveWorkPath('/root/work/x'), '\\\\server\\share\\work\\x'));
   context.run('a', () => assert.equal(context.rewriteScriptPaths("'/srv/a/new/test.py'"), "'C:/用户/work/new/test.py'"));
