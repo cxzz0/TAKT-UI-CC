@@ -117,6 +117,7 @@ test('Windows remote desktop uses its managed tunnel and platform opener without
   assert.equal(started.ok, true); assert.equal(started.controller, 'user');
   assert.equal(calls[0].command, 'ssh');
   assert.ok(calls[0].args.includes('ControlMaster=no'));
+  assert.ok(calls[0].args.includes('ClearAllForwardings=yes'));
   assert.ok(!calls[0].args.includes('-S'));
   assert.ok(calls[0].args.includes('host-a'));
   const opened = await desktop(node, 'open-native-vnc');

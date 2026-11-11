@@ -24,7 +24,7 @@ module.exports = function createRemoteDesktop({ runCommand, ensureNodeTunnel, he
     } else if (action === 'open-browser') {
       command = 'DISPLAY=:1 nohup /usr/local/bin/chromium https://www.google.com >/dev/null 2>&1 </dev/null & printf "status\\n1440x900\\ntakt-ui\\n" | /usr/local/bin/instabox-desktop';
     }
-    const options = windows ? ['-o', 'ControlMaster=no', '-o', 'ControlPath=none', '-o', 'BatchMode=yes'] : ['-S', nodeTunnelSock(node)];
+    const options = windows ? ['-o', 'ClearAllForwardings=yes', '-o', 'ControlMaster=no', '-o', 'ControlPath=none', '-o', 'BatchMode=yes'] : ['-S', nodeTunnelSock(node)];
     const result = await runCommand('ssh', [...options, '-o', 'ConnectTimeout=4', node.sshHost, command], { timeoutMs: 6000 });
     return { ...urls, ok: result.exitCode === 0, controller: (result.stdout || '').includes('controller human') ? 'user' : 'agent' };
   };
