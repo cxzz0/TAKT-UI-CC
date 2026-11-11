@@ -17,6 +17,18 @@ async function health(service) {
 async function start() {
   fs.mkdirSync(runDir, { recursive: true }); fs.mkdirSync(cfg.LOG_DIR, { recursive: true });
   const started = [];
+  const sessionMode = platform.isWindows || process.env.TAKT_SESSION_SSH === '1';
+  let sessionEnv = {};
+  if (sessionMode) {
+    const live = (await Promise.all(services.map(health))).filter(Boolean);
+    if (live.some(service => service.dataDir !== cfg.TAKT_HOME)) throw new Error('服务端口正由另一个实例使用');
+    const addresses = new Set(live.map(service => service.sshAgent));
+    if (addresses.has(undefined) || addresses.has('') || addresses.size > 1) throw new Error('现有服务使用其他 SSH 会话，请先 npm run stop 再重新启动');
+    const existingAddress = [...addresses][0];
+    sessionEnv = existingAddress
+      ? { TAKT_SSH_AGENT: existingAddress, SSH_AUTH_SOCK: existingAddress }
+      : require('../lib/session-ssh').newSessionEnv();
+  }
   try {
   for (const service of services) {
     const existing = await health(service);
@@ -26,7 +38,7 @@ async function start() {
     }
     const log = fs.openSync(path.join(cfg.LOG_DIR, `${service.name}.log`), 'a');
     const child = spawn(process.execPath, [path.join(cfg.REPO_ROOT, service.file), ...service.args], {
-      detached: true, windowsHide: true, env: platform.childEnv({ TAKT_MANAGED_SERVICES: '1' }), stdio: ['ignore', log, log],
+      detached: true, windowsHide: true, env: platform.childEnv({ ...sessionEnv, TAKT_MANAGED_SERVICES: '1' }), stdio: ['ignore', log, log],
     });
     fs.closeSync(log);
     started.push({ service, child });
@@ -83,7 +95,7 @@ async function doctor() {
 if (require.main === module) {
   const command = process.argv[2] || 'start';
   const action = { start, stop, doctor }[command];
-  if (!platform.isWindows && action) {
+  if (!platform.isWindows && process.env.TAKT_SESSION_SSH !== '1' && action) {
     const script = { start: 'start.sh', stop: 'stop.sh', doctor: 'doctor.sh' }[command];
     const child = spawn('bash', [path.join(__dirname, script)], { stdio: 'inherit' });
     child.on('error', error => { console.error(error.message); process.exitCode = 1; });

@@ -1,7 +1,7 @@
 {
   "name": "takt-ui-cc",
   "version": "1.0.0",
-  "description": "TAKT-UI-CC: a multi-machine desktop workbench for Claude Code over SSH \u2014 project/session sidebar, persistent tmux terminals, local file preview, Syncthing sync and a reverse-tunnelled local MCP server.",
+  "description": "TAKT-UI-CC: a multi-machine desktop workbench for Claude Code over SSH — project/session sidebar, persistent tmux terminals, local file preview, Syncthing sync and a reverse-tunnelled local MCP server.",
   "license": "MIT",
   "private": false,
   "type": "commonjs",
@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "node-pty": "^1.1.0",
+    "ssh2": "1.17.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {

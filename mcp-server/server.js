@@ -120,6 +120,7 @@ async function shutdown() {
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+if (process.env.TAKT_SSH_AGENT && process.connected) process.on('disconnect', shutdown);
 
 const handleJsonRpc = require('./rpc')(TOOLS, executeTool);
 
@@ -178,7 +179,7 @@ if (process.argv.includes('--stdio')) {
 
     if (urlObj.pathname === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, service: 'mac-industrial-mcp', workDir: MAC_WORK_DIR, tools: TOOLS.length, pid: process.pid, platform: process.platform, dataDir: cfg.TAKT_HOME }));
+      res.end(JSON.stringify({ ok: true, service: 'mac-industrial-mcp', workDir: MAC_WORK_DIR, tools: TOOLS.length, pid: process.pid, platform: process.platform, dataDir: cfg.TAKT_HOME, sshAgent: process.env.TAKT_SSH_AGENT || '' }));
       return;
     }
     if (urlObj.pathname === '/shutdown') {

@@ -7,6 +7,7 @@ const { nodeTunnelSock: tunnelSocket, tunnelArgs } = require('../lib/tunnel-conf
 const platform = require('../lib/platform');
 const { TunnelManager } = require('../lib/ssh-tunnels');
 module.exports = function createWatchdog({ cfg, runCommand, loadConfiguredNodes, TOOLS, MCP_TOKEN, windows = platform.isWindows, tunnelManager }) {
+windows = windows || Boolean(process.env.TAKT_SSH_AGENT);
 const windowsTunnels = windows ? (tunnelManager || new TunnelManager(cfg)) : null;
 const PORT = cfg.MCP_PORT;
 const EDA_PORT = cfg.EDA_PORT;

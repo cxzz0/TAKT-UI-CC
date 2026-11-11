@@ -33,7 +33,7 @@ async function freePort() {
 }
 async function boot() {
   if (app.isPackaged) {
-    for (const name of ['node-pty', 'ws']) {
+    for (const name of ['node-pty', 'ws', 'ssh2']) {
       if (!fs.existsSync(path.join(backend, 'node_modules', name, 'package.json'))) throw new Error(`安装包不完整：缺少 ${name}，请重新安装完整 Windows 版本。`);
     }
   }
@@ -43,7 +43,7 @@ async function boot() {
   fs.mkdirSync(cfg.LOG_DIR, { recursive: true });
   fs.mkdirSync(path.join(cfg.TAKT_HOME, 'run'), { recursive: true });
   fs.writeFileSync(path.join(cfg.TAKT_HOME, 'run/desktop.json'), JSON.stringify({ pid: process.pid, version: app.getVersion() }));
-  const env = { ...process.env, TAKT_PORT: String(port), TAKT_MCP_PORT: String(mcpPort), TAKT_MANAGED_SERVICES: '1' };
+  const env = { ...process.env, ...require(path.join(backend, 'lib/session-ssh')).newSessionEnv(), TAKT_PORT: String(port), TAKT_MCP_PORT: String(mcpPort), TAKT_MANAGED_SERVICES: '1' };
   for (const [name, script, args] of [['mcp-server', 'mcp-server/server.js', ['--http']], ['workbench', 'server/server.js', []]]) {
     const logPath = path.join(cfg.LOG_DIR, `${name}.log`);
     const logStart = fs.existsSync(logPath) ? fs.statSync(logPath).size : 0;

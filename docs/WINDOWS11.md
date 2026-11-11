@@ -39,7 +39,25 @@ Host my-linux
     IdentityFile ~/.ssh/id_ed25519
 ```
 
-先执行 `ssh my-linux`，确认主机指纹并验证密钥登录；带密码的私钥可配合 Windows `ssh-agent`。再执行 `ssh -o BatchMode=yes my-linux true` 验证后台连接无需交互。远端需要 `tmux`、`python3`、`curl` 和 Claude Code。
+首次先执行 `ssh my-linux`，核对并确认服务器主机指纹，同时验证密钥登录；此时输入私钥口令属于正常操作。远端需要 `tmux`、`python3`、`curl` 和 Claude Code。
+
+### 每次启动解锁私钥
+
+Windows 桌面和 `npm run start:all` 默认使用独立的会话 SSH agent。打开工作台后，在「解锁 SSH 私钥」中填写加密私钥的完整路径和口令，点击「仅本次解锁」。解锁后，交互终端、后台 MCP 隧道、节点探测及文件操作共用这把密钥；断线重连无需重复输入。支持 OpenSSH/PEM 格式的 Ed25519、RSA 和 ECDSA 私钥。
+
+口令不写入配置、日志、命令行或子进程环境变量，也不调用 `ssh-add`。解锁后的密钥仅保存在工作台进程内存中，通过本次运行的独立命名管道供 SSH 签名；不会交给 Windows 系统 agent 或凭据管理器持久保存。后台仍使用 `BatchMode=yes`，认证材料由这次解锁提供。退出桌面会停止本实例的服务和 SSH 子进程；下次启动需重新解锁。若桌面进程意外结束，后端通过 IPC 断开事件退出。
+
+「稍后」可暂时关闭弹窗，再点击顶部「SSH 已锁定」解锁。多台服务器共用同一把私钥时只需解锁一次；不同私钥需分别添加。原始加密私钥保持不变。之前自行加入系统 agent 的密钥不会被本应用删除，也不会被本次会话使用。
+
+浏览器模式中，关闭网页不会停止后台服务；运行 `npm run stop` 才结束本次解锁。直接单独运行 `npm start` 或 `npm run start:mcp` 属于未托管模式，不会自动创建共享会话；需要此功能时请通过上述桌面或 `start:all` 入口启动。macOS 默认保留原有认证方式。Linux 上可用 `TAKT_SESSION_SSH=1 npm run start:all` / `TAKT_SESSION_SSH=1 npm run stop` 验证相同的会话流程。
+
+SSH 别名中的 `IdentityFile` 应对应所解锁的私钥；若配置了 `IdentitiesOnly yes`，不匹配的密钥不会被该主机接受。服务器主机密钥校验仍由 OpenSSH 执行，解锁不会跳过未知或变更的主机指纹。
+
+### WSL2 方案的范围
+
+[上游 PR #3（addecho）](https://github.com/willwill85/TAKT-UI-CC/pull/3) 提供另一条部署路线：工作台、SSH、ConPTY 的 Linux PTY 对应实现、Syncthing 等运行在 WSL2，使用 Windows 浏览器访问，并通过 PowerShell、`wslpath`、Explorer 和 Windows Terminal 调用宿主机能力。该 PR 的一键安装器会将私钥复制到 WSL；它没有提供上述每次启动解锁流程。
+
+当前 codex 分支保留原生 Windows Electron/ConPTY 路线，未直接合入该 PR 的单文件服务端和前端改动。这里的会话 agent 核心支持 Unix socket，便于未来 WSL2 适配复用，但不表示整套 WSL2 宿主工具已适配或验证。将 WSL2 作为 Linux 节点经 SSH 接入，与把客户端后端运行在 WSL2 中，是两种配置方式。
 
 在工作台「节点」中绑定该别名并启用节点。全新安装的默认节点是禁用、未绑定状态，配置完成后才能开启终端。
 

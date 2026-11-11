@@ -166,6 +166,7 @@
             </button>
           </div>
           <div class="header-actions">
+            <button class="btn btn-ghost" id="btnSshSession" type="button" hidden>SSH 已锁定</button>
             <button class="btn btn-icon btn-ghost" id="btnOpenNodeManager" title="管理机器节点">
               <svg class="icon" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
             </button>
@@ -531,6 +532,23 @@
     </form>
   </dialog>
 
+  <dialog id="sshSessionDialog" class="ag-dialog" aria-labelledby="sshSessionTitle" style="width:480px;">
+    <form id="sshSessionForm" class="dialog-box" autocomplete="off">
+      <h3 id="sshSessionTitle">解锁 SSH 私钥</h3>
+      <p style="font-size:12px;line-height:1.6;color:var(--text-secondary)">每次启动输入一次口令。仅供本次 TAKT 运行使用，退出应用后清理，不保存口令或解锁后的私钥。</p>
+      <label for="sshKeyFile">私钥文件（完整路径）</label>
+      <input class="dialog-input" id="sshKeyFile" type="text" required autocomplete="off" spellcheck="false" />
+      <label for="sshKeyPassphrase">私钥口令</label>
+      <input class="dialog-input" id="sshKeyPassphrase" type="password" autocomplete="off" />
+      <p id="sshSessionKeys" style="font-size:11px;overflow-wrap:anywhere"></p>
+      <p id="sshSessionError" role="alert" style="font-size:12px;color:var(--color-danger, #ef6464)"></p>
+      <div class="dialog-actions">
+        <button class="btn" id="sshSessionCancel" type="button">稍后</button>
+        <button class="btn btn-primary" id="sshSessionUnlock" type="submit">仅本次解锁</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="nodeManagerDialog" class="ag-dialog" closedby="any" aria-labelledby="nodeManagerDialogTitle" style="width: 520px;">
     <form method="dialog" class="dialog-box" id="nodeManagerForm">
       <div style="display:flex; align-items:center; justify-content:space-between;">
@@ -645,6 +663,7 @@
   <script src="/assets/icons.js"></script>
   <script src="/assets/nodes.js"></script>
   <script src="/assets/workbench.js"></script>
+  <script src="/assets/ssh-session.js"></script>
 
 </body>
 </html>

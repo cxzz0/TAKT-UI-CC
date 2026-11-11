@@ -27,7 +27,7 @@ async function run() {
   while (!stopped) {
     const started = Date.now();
     const code = await new Promise((resolve) => {
-      child = spawn(platform.ssh, interactiveArgs(tabId, cwd, host), { stdio: 'inherit', env: platform.childEnv() });
+      child = spawn(platform.ssh, platform.sshArgs(interactiveArgs(tabId, cwd, host)), { stdio: 'inherit', env: platform.childEnv() });
       child.on('error', (err) => { console.error('[TAKT] ' + err.message); resolve(1); });
       child.on('exit', resolve);
     });

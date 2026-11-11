@@ -25,6 +25,8 @@ const { spawnTerminal } = require('../lib/pty-session');
 const platform = require('../lib/platform');
 const { mapper } = require('../lib/workspace-paths');
 const { WebSocketServer } = require('ws');
+const sessionAgent = process.env.TAKT_SSH_AGENT ? new (require('../lib/session-agent').SessionAgent)(process.env.TAKT_SSH_AGENT) : null;
+const sshSessionRoutes = require('./services/ssh-session')(sessionAgent);
 
 const cfg = require('../config');
 const { isLoopbackHost, isLocalOrigin, hasBearerToken } = require('../lib/http-security');
@@ -57,6 +59,7 @@ function shSingleQuote(str) {
 }
 
 function runCmd(cmd, args, timeoutMs = 8000, options = {}) {
+  if (cmd === 'ssh' && sessionAgent && !sessionAgent.unlocked) return Promise.resolve({ exitCode: 255, stdout: '', stderr: '请先在工作台解锁 SSH 私钥' });
   const isBgSsh = cmd === 'ssh' && Array.isArray(args) && args.includes('-Nf');
   const spec = platform.commandSpec(cmd, args);
   return new Promise((resolve) => {
@@ -158,6 +161,7 @@ syncAllNodesToSqlite().catch(() => {});
 const activePtyTabs = new Map();
 
 function getOrCreatePtyTab({ tabId, sessionId, title, cwd, resume, mode, nodeId, sshHost }) {
+  if (sessionAgent && !sessionAgent.unlocked) throw new Error('请先在工作台解锁 SSH 私钥');
   if (activePtyTabs.has(tabId)) {
     const existing = activePtyTabs.get(tabId);
     if (nodeId && existing.nodeId !== nodeId) throw new Error('Terminal belongs to another node');
@@ -179,7 +183,8 @@ function getOrCreatePtyTab({ tabId, sessionId, title, cwd, resume, mode, nodeId,
   registerSessionInSqlite({ id: sid, nodeId: node.id, cwd: targetCwd, title });
 
   const launcherScript = path.join(__dirname, 'native-ssh-session.sh');
-  const ptyProc = spawnTerminal(platform.isWindows ? process.execPath : '/bin/bash', [platform.isWindows ? path.join(cfg.REPO_ROOT, 'scripts/ssh-session.js') : launcherScript, String(tabId), targetCwd, targetSshHost], {
+  const useNodeLauncher = platform.isWindows || Boolean(sessionAgent);
+  const ptyProc = spawnTerminal(useNodeLauncher ? process.execPath : '/bin/bash', [useNodeLauncher ? path.join(cfg.REPO_ROOT, 'scripts/ssh-session.js') : launcherScript, String(tabId), targetCwd, targetSshHost], {
     name: 'xterm-256color',
     cols: 120,
     rows: 36,
@@ -1856,7 +1861,7 @@ function streamSshToFile(host, command, filePath, timeoutMs) {
       try { fs.closeSync(fd); } catch {}
       resolve(ok);
     };
-    const child = spawn(platform.ssh, [...DOCKTERM_SSH_OPTS, host, command], {
+    const child = spawn(platform.ssh, platform.sshArgs([...DOCKTERM_SSH_OPTS, host, command]), {
       env: platform.childEnv(), windowsHide: true,
       stdio: ['ignore', fd, 'ignore'],
     });
@@ -2083,7 +2088,7 @@ function uploadChatAttachment(node, cwd, rawName, stream, size) {
       clearTimeout(timer);
       resolve(r);
     };
-    const child = spawn(platform.ssh, [...DOCKTERM_SSH_OPTS, node.sshHost, cmd], {
+    const child = spawn(platform.ssh, platform.sshArgs([...DOCKTERM_SSH_OPTS, node.sshHost, cmd]), {
       env: platform.childEnv(), windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -2203,7 +2208,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && u.pathname === '/api/health') {
-      sendJson(res, 200, { ok: true, service: 'takt-workbench', pid: process.pid, platform: process.platform, dataDir: cfg.TAKT_HOME });
+      sendJson(res, 200, { ok: true, service: 'takt-workbench', pid: process.pid, platform: process.platform, dataDir: cfg.TAKT_HOME, sshAgent: process.env.TAKT_SSH_AGENT || '' });
       return;
     }
     if (req.method === 'POST' && u.pathname === '/api/shutdown') {
@@ -2213,7 +2218,8 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     // Only named application assets are public; no arbitrary filesystem route.
-    const assets = new Set(['workbench.css', 'workbench.js', 'icons.js', 'nodes.js']);
+    if (await sshSessionRoutes(req, res, u.pathname)) return;
+    const assets = new Set(['workbench.css', 'workbench.js', 'icons.js', 'nodes.js', 'ssh-session.js']);
     if (req.method === 'GET' && u.pathname.startsWith('/assets/')) {
       const name = u.pathname.slice('/assets/'.length);
       if (!assets.has(name)) { sendJson(res, 404, { ok: false }); return; }
@@ -3212,13 +3218,15 @@ function shutdown() {
   shuttingDown = true;
   for (const tab of activePtyTabs.values()) { try { tab.ptyProc.kill(); } catch {} }
   for (const client of wss.clients) client.terminate();
+  sessionAgent?.close().catch(() => {});
   server.close();
   setTimeout(() => process.exit(0), platform.isWindows ? 3500 : 300);
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+if (sessionAgent && process.connected) process.on('disconnect', shutdown);
 
-server.listen(PORT, '127.0.0.1', () => {
+const listen = () => server.listen(PORT, '127.0.0.1', () => {
   const url = `http://127.0.0.1:${PORT}`;
   const logLine = `[${new Date().toISOString()}] TAKT Multi-Node Workbench listening on ${url}\n`;
   try {
@@ -3226,3 +3234,5 @@ server.listen(PORT, '127.0.0.1', () => {
   } catch {}
   console.log(logLine.trim());
 });
+if (sessionAgent) sessionAgent.start().then(listen).catch(() => { console.error('无法启动本次运行的 SSH agent'); process.exit(1); });
+else listen();
