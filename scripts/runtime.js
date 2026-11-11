@@ -55,7 +55,9 @@ async function stopService(service, expectedPid) {
   if (!response.ok) throw new Error(`无法停止 ${service.name}: HTTP ${response.status}`);
   for (let i = 0; i < 60; i++) {
     const current = await health(service);
-    if (!current || current.pid !== running.pid) return;
+    let alive = false;
+    try { process.kill(running.pid, 0); alive = true; } catch (error) { if (error.code !== 'ESRCH') throw error; }
+    if ((!current || current.pid !== running.pid) && !alive) return;
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   throw new Error(`${service.name} 未能退出`);

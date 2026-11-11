@@ -156,7 +156,8 @@ test('tunnel sockets distinguish data directories and ports; reverse binds are e
 });
 
 test('database upgrades legacy primary keys and scopes rename/delete to one machine', (t) => {
-  const filename = path.join(temp(t), 'db.sqlite');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'takt-db-'));
+  const filename = path.join(directory, 'db.sqlite');
   const { DatabaseSync } = require('node:sqlite');
   const old = new DatabaseSync(filename);
   old.exec(`CREATE TABLE sessions (id TEXT PRIMARY KEY, node_id TEXT NOT NULL, project_path TEXT NOT NULL,
@@ -165,7 +166,7 @@ test('database upgrades legacy primary keys and scopes rename/delete to one mach
     INSERT INTO sessions (id,node_id,project_path,title,updated_at) VALUES ('same','a','/root/work','A',1);`);
   old.close();
   const db = require('../server/repositories/workbench-db')(filename);
-  t.after(() => db.workbenchDb.close());
+  t.after(() => { db.workbenchDb.close(); fs.rmSync(directory, { recursive: true, force: true }); });
   db.stmtRegisterLocalSession.run('same', 'b', '/root/work', 'B', 2);
   db.stmtRenameSession.run('renamed', 'renamed', 3, 'a', 'same');
   db.stmtSoftDeleteSession.run(4, 'a', 'same');
