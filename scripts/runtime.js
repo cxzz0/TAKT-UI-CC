@@ -41,7 +41,8 @@ async function start() {
   } catch (error) {
     for (const { service, child } of started.reverse()) {
       if (child.exitCode !== null) continue;
-      try { await stopService(service, child.pid); } catch { child.kill(); }
+      try { await stopService(service, child.pid); } catch {}
+      if (child.exitCode === null) child.kill();
     }
     throw error;
   }

@@ -54,12 +54,14 @@ test('isolated workbench and MCP: auth, assets, node-scoped RPC and session muta
   }
   for (const url of [ui + '/api/health', mcp + '/health']) {
     let ready = false;
-    for (let n = 0; n < 80; n++) {
-      try { ready = (await fetch(url)).ok; } catch {}
+    const deadline = Date.now() + 25000;
+    while (Date.now() < deadline) {
+      try { ready = (await fetch(url, { signal: AbortSignal.timeout(1000) })).ok; } catch {}
       if (ready) break;
+      if (children.some(child => child.exitCode !== null)) break;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    assert.ok(ready, logs);
+    assert.ok(ready, `Service did not become ready: ${url}\n${logs}`);
   }
   const token = fs.readFileSync(path.join(directory, 'mcp-token'), 'utf8').trim();
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
