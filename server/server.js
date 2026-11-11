@@ -2853,7 +2853,7 @@ const server = http.createServer(async (req, res) => {
         fromRemote = r.fromRemote;
       }
       const how = macOpenArgs(target, Boolean(body.reveal));
-      const opener = platform.isWindows && how.mode === 'text'
+      const opener = process.platform === 'darwin' ? { command: 'open', args: how.args } : platform.isWindows && how.mode === 'text'
         ? { command: 'notepad.exe', args: [target] } : platform.openTarget(target, Boolean(body.reveal));
       const r = await runCmd(opener.command, opener.args, 8000);
       sendJson(res, r.exitCode === 0 ? 200 : 500, {
