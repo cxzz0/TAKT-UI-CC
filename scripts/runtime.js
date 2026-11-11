@@ -16,6 +16,8 @@ async function health(service) {
 }
 async function start() {
   fs.mkdirSync(runDir, { recursive: true }); fs.mkdirSync(cfg.LOG_DIR, { recursive: true });
+  const started = [];
+  try {
   for (const service of services) {
     const existing = await health(service);
     if (existing) {
@@ -27,6 +29,7 @@ async function start() {
       detached: true, windowsHide: true, env: platform.childEnv({ TAKT_MANAGED_SERVICES: '1' }), stdio: ['ignore', log, log],
     });
     fs.closeSync(log);
+    started.push({ service, child });
     child.on('error', (err) => console.error(err.message)); child.unref();
     let ready;
     for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 250)); ready = await health(service); if (ready) break; if (child.exitCode !== null) break; }
@@ -35,18 +38,33 @@ async function start() {
     console.log(`${service.name} 已启动 (PID ${child.pid})`);
   }
   console.log(`工作台: http://127.0.0.1:${cfg.PORT}`);
+  } catch (error) {
+    for (const { service, child } of started.reverse()) {
+      if (child.exitCode !== null) continue;
+      try { await stopService(service, child.pid); } catch { child.kill(); }
+    }
+    throw error;
+  }
+}
+async function stopService(service, expectedPid) {
+  const running = await health(service);
+  if (!running || running.dataDir !== cfg.TAKT_HOME || !Number.isInteger(running.pid) || (expectedPid && running.pid !== expectedPid)) return;
+  const response = await fetch(`http://127.0.0.1:${service.port}${service.name === 'workbench' ? '/api/shutdown' : '/shutdown'}`, {
+    method: 'POST', headers: { Authorization: 'Bearer ' + cfg.getMcpToken() }, signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) throw new Error(`无法停止 ${service.name}: HTTP ${response.status}`);
+  for (let i = 0; i < 60; i++) {
+    const current = await health(service);
+    if (!current || current.pid !== running.pid) return;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  throw new Error(`${service.name} 未能退出`);
 }
 async function stop() {
   // Identity comes from the running service, so a stale PID file can never kill another application.
   for (const service of [...services].reverse()) {
-    const running = await health(service);
-    if (running && running.dataDir === cfg.TAKT_HOME && Number.isInteger(running.pid)) {
-      const response = await fetch(`http://127.0.0.1:${service.port}${service.name === 'workbench' ? '/api/shutdown' : '/shutdown'}`, {
-        method: 'POST', headers: { Authorization: 'Bearer ' + cfg.getMcpToken() }, signal: AbortSignal.timeout(5000),
-      });
-      if (!response.ok) throw new Error(`无法停止 ${service.name}: HTTP ${response.status}`);
-      console.log(`已停止 ${service.name}`);
-    }
+    await stopService(service);
+    console.log(`已停止 ${service.name}`);
     try { fs.unlinkSync(path.join(runDir, `${service.name}.json`)); } catch {}
   }
 }
