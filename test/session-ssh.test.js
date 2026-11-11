@@ -22,6 +22,22 @@ async function freePort() {
   const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port;
 }
 
+test('session terminal retains Documents/work, work and home fallback when its configured directory is unusable', { skip: process.platform === 'win32' }, async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'takt-cwd-test-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const bin = path.join(directory, '.local', 'bin'); fs.mkdirSync(bin, { recursive: true });
+  fs.writeFileSync(path.join(bin, 'tmux'), '#!/bin/sh\nif [ "$1" = attach-session ]; then pwd; fi\n', { mode: 0o700 });
+  const blocked = path.join(directory, 'not-a-directory'); fs.writeFileSync(blocked, 'test');
+  const documentsWork = path.join(directory, 'Documents', 'work'); fs.mkdirSync(documentsWork, { recursive: true });
+  const command = require('../lib/ssh').remoteSessionCommand('test', path.join(blocked, 'project'));
+  const run = async () => (await exec('/bin/bash', ['-c', command], { env: { ...process.env, HOME: directory } })).stdout.trim();
+  assert.equal(await run(), documentsWork);
+  fs.rmdirSync(documentsWork);
+  assert.equal(await run(), path.join(directory, 'work'));
+  fs.rmdirSync(path.join(directory, 'work')); fs.writeFileSync(path.join(directory, 'work'), 'test');
+  assert.equal(await run(), directory);
+});
+
 for (const [type, options] of [['ed25519', {}], ['rsa', { bits: 2048 }], ['ecdsa', { bits: 256 }]]) {
   test(`native OpenSSH uses the session-only ${type} key; lock and exit revoke it`, { timeout: 30000 }, async t => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'takt-agent-test-'));
