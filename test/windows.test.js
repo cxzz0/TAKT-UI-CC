@@ -42,6 +42,18 @@ function fakeChild() {
   child.kill = () => { child.exitCode = 0; queueMicrotask(() => child.emit('close', 0)); };
   return child;
 }
+test('POSIX project mappings infer the owning node outside its mirror', () => {
+  const nodes = [
+    { id: 'a', localWorkDir: '/mirrors/a', remoteWorkDir: '/srv/a' },
+    { id: 'b', localWorkDir: '/mirrors/b', remoteWorkDir: '/srv/b', projectMappings: [{ localPath: '/Users/dev/project', remotePath: '/projects/b' }] },
+  ];
+  const maps = mapper(nodes, nodes[0].localWorkDir, '', path.posix);
+  const result = maps.resolve('/Users/dev/project/src/index.js');
+  assert.equal(result.node.id, 'b');
+  assert.equal(result.localPath, '/Users/dev/project/src/index.js');
+  assert.equal(result.remotePath, '/projects/b/src/index.js');
+  assert.equal(maps.resolve('/Users/dev/project/src/index.js', '/srv/a', 'a').localPath, '');
+});
 test('Windows tunnel waits for forward acknowledgement, owns one child and handles collisions', async () => {
   const cfg = { MCP_PORT: 18765, EDA_PORT: 49620, ENABLE_EDA_TUNNEL: false };
   const node = { id: 'a', sshHost: 'host', enabled: true, desktopWebPort: 16080, syncthingTunnelPort: 12200 };
