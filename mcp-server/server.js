@@ -23,6 +23,8 @@ const http = require('node:http');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const platform = require('../lib/platform');
+const windowsTools = require('./windows-tools');
 
 const cfg = require('../config');
 const { isLoopbackHost, isLocalOrigin, hasBearerToken } = require('../lib/http-security');
@@ -49,6 +51,7 @@ const PATHS = {
   dfuUtil: '/opt/homebrew/bin/dfu-util',
   esptoolPy: path.join(cfg.ESP_PYTHON_ENV, 'bin/esptool.py'),
   espPython: path.join(cfg.ESP_PYTHON_ENV, 'bin/python'),
+  ...(platform.isWindows ? windowsTools.paths() : {}),
 };
 
 fs.mkdirSync(MAC_WORK_DIR, { recursive: true });
@@ -64,14 +67,11 @@ function runCommand(cmd, args, options = {}) {
   const timeoutMs = options.timeoutMs || 180000;
   const cwd = options.cwd || cfg.TAKT_HOME;
   const isBgSsh = cmd === 'ssh' && Array.isArray(args) && args.includes('-Nf');
+  const spec = platform.commandSpec(cmd, args);
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, {
+    const child = spawn(spec.command, spec.args, {
       cwd,
-      env: {
-        ...process.env,
-        PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${process.env.PATH || ''}`,
-        ...(options.env || {}),
-      },
+      env: platform.childEnv(options.env), windowsHide: true,
       stdio: isBgSsh ? 'ignore' : [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
     if (child.stdin) { child.stdin.on('error', () => {}); child.stdin.end(options.input); }
@@ -99,10 +99,27 @@ function runCommand(cmd, args, options = {}) {
 // ============================================================================
 // MCP Tool Definitions (19 Tools covering 3D/CAD/EDA/Browser/Xcode/USB/Flashing)
 // ============================================================================
-const TOOLS = require('./tools/registry');
-const { ensureEasyEdaBridge, nodeTunnelSock, healNodeTunnel, runSystemWatchdogCycle, startBridgeAndTunnelWatchdog, systemStatusState } = require('./watchdog')({ cfg, runCommand, loadConfiguredNodes, TOOLS, MCP_TOKEN });
+const toolRegistry = require('./tools/registry');
+const TOOLS = platform.isWindows ? windowsTools.describe(toolRegistry) : toolRegistry;
+const { ensureEasyEdaBridge, nodeTunnelSock, healNodeTunnel, ensureNodeTunnel, runSystemWatchdogCycle, startBridgeAndTunnelWatchdog, systemStatusState, stop: stopWatchdog } = require('./watchdog')({ cfg, runCommand, loadConfiguredNodes, TOOLS, MCP_TOKEN });
+const remoteDesktop = require('./remote-desktop')({ runCommand, ensureNodeTunnel, healNodeTunnel, nodeTunnelSock });
 
-const executeTool = require('./tools')({ cfg, PATHS, resolveWorkPath, rewriteScriptPaths, getActiveNodeConfig, runCommand, ensureEasyEdaBridge, EDA_PORT });
+const executeCommonTool = require('./tools')({ cfg, PATHS, resolveWorkPath, rewriteScriptPaths, getActiveNodeConfig, runCommand, ensureEasyEdaBridge, EDA_PORT });
+async function executeTool(name, args = {}) {
+  if (platform.isWindows) {
+    const result = await windowsTools.execute(name, args, { runCommand, resolveWorkPath, rewriteScriptPaths, node: getActiveNodeConfig(), paths: PATHS });
+    if (result.handled) return result.output;
+  }
+  return executeCommonTool(name, args);
+}
+let shuttingDown = false;
+async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try { await stopWatchdog(); } finally { process.exit(0); }
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 const handleJsonRpc = require('./rpc')(TOOLS, executeTool);
 
@@ -147,13 +164,13 @@ if (process.argv.includes('--stdio')) {
       return;
     }
     const urlObj = new URL(req.url, `http://${req.headers.host}`);
-    const protectedEndpoint = ['/mcp', '/messages', '/sse', '/system-heal', '/remote-desktop'].includes(urlObj.pathname);
+    const protectedEndpoint = ['/mcp', '/messages', '/sse', '/system-heal', '/remote-desktop', '/shutdown'].includes(urlObj.pathname);
     if (protectedEndpoint && !hasBearerToken(req.headers, MCP_TOKEN)) {
       res.writeHead(401, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Unauthorized: missing or invalid MCP token' } }));
       return;
     }
-    if (['/system-heal', '/remote-desktop'].includes(urlObj.pathname) && req.method !== 'POST') {
+    if (['/system-heal', '/remote-desktop', '/shutdown'].includes(urlObj.pathname) && req.method !== 'POST') {
       res.writeHead(405, { Allow: 'POST' });
       res.end('Method not allowed');
       return;
@@ -161,7 +178,13 @@ if (process.argv.includes('--stdio')) {
 
     if (urlObj.pathname === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, service: 'mac-industrial-mcp', workDir: MAC_WORK_DIR, tools: TOOLS.length }));
+      res.end(JSON.stringify({ ok: true, service: 'mac-industrial-mcp', workDir: MAC_WORK_DIR, tools: TOOLS.length, pid: process.pid, platform: process.platform, dataDir: cfg.TAKT_HOME }));
+      return;
+    }
+    if (urlObj.pathname === '/shutdown') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      setTimeout(shutdown, 50);
       return;
     }
 
@@ -192,49 +215,9 @@ if (process.argv.includes('--stdio')) {
         res.end(JSON.stringify({ ok: false, error: '未配置可用的远程桌面节点' }));
         return;
       }
-      const webPort = Number((node && node.desktopWebPort) || 16080);
-      const vncPort = Number((node && node.desktopVncPort) || 15901);
-      const webUrl = `http://127.0.0.1:${webPort}/vnc.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000`;
-      const vncUrl = `vnc://:instabox@127.0.0.1:${vncPort}`;
-
-      if (action === 'open-native-vnc') {
-        await runCommand('open', [vncUrl], { timeoutMs: 4000 });
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: true, nodeId: node.id, sshHost: node.sshHost, webPort, vncPort, webUrl, vncUrl }));
-        return;
-      }
-
-      const sock = nodeTunnelSock(node);
-      if (action === 'start') {
-        // Ensure local port forward for webPort is listening; if not, heal tunnel
-        const lsofCheck = await runCommand('lsof', ['-nP', `-iTCP:${webPort}`, '-sTCP:LISTEN'], { timeoutMs: 2000 });
-        if (lsofCheck.exitCode !== 0 || !lsofCheck.stdout.trim()) {
-          await healNodeTunnel(node, false);
-        }
-      }
-
-      let remoteCmd = 'printf "start\\n1440x900\\ntakt-ui\\n" | /usr/local/bin/instabox-desktop';
-      if (action === 'takeover') {
-        remoteCmd = 'printf "takeover\\n1440x900\\ntakt-ui\\n" | /usr/local/bin/instabox-desktop';
-      } else if (action === 'handback') {
-        remoteCmd = 'printf "handback\\n1440x900\\ntakt-ui\\n" | /usr/local/bin/instabox-desktop';
-      } else if (action === 'open-browser') {
-        remoteCmd = 'DISPLAY=:1 nohup /usr/local/bin/chromium https://www.google.com >/dev/null 2>&1 </dev/null & printf "status\\n1440x900\\ntakt-ui\\n" | /usr/local/bin/instabox-desktop';
-      }
-
-      const sshOut = await runCommand('ssh', ['-S', sock, '-o', 'ConnectTimeout=4', node.sshHost, remoteCmd], { timeoutMs: 6000 });
-      const controller = (sshOut.stdout || '').includes('controller human') ? 'user' : 'agent';
+      const result = await remoteDesktop(node, action);
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({
-        ok: sshOut.exitCode === 0,
-        nodeId: node.id,
-        sshHost: node.sshHost,
-        webPort,
-        vncPort,
-        webUrl,
-        vncUrl,
-        controller,
-      }));
+      res.end(JSON.stringify(result));
       return;
     }
 
@@ -366,4 +349,3 @@ if (process.argv.includes('--stdio')) {
     if (cfg.WATCHDOG_ENABLED) startBridgeAndTunnelWatchdog();
   });
 }
-

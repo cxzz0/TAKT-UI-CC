@@ -72,7 +72,7 @@ if scene.render.engine == 'CYCLES':
     scene.cycles.samples = ${samples}
     try:
         prefs = bpy.context.preferences.addons['cycles'].preferences
-        prefs.compute_device_type = 'METAL'
+        prefs.compute_device_type = '${process.platform === 'win32' ? 'CUDA' : 'METAL'}'
         prefs.get_devices()
         for d in prefs.devices:
             d.use = True
@@ -583,7 +583,7 @@ finally:
       const cwd = args.cwd ? resolveWorkPath(args.cwd) : MAC_WORK_DIR;
       const timeoutMs = Math.min(600000, Math.max(5000, Number(args.timeout_sec || 120) * 1000));
       const cmd = rewriteScriptPaths(args.command);
-      const res = await runCommand('/bin/zsh', ['-c', cmd], { cwd, timeoutMs });
+      const res = await runCommand(process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash', ['-c', cmd], { cwd, timeoutMs });
       return `Mac 本机命令执行完成 (exitCode=${res.exitCode}, cwd=${cwd}):\nSTDOUT:\n${res.stdout.slice(-6000)}\nSTDERR:\n${res.stderr.slice(-3000)}`;
     }
 

@@ -4,7 +4,10 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { buildRemoteConfigPy } = require('../lib/remote-config');
 const { nodeTunnelSock: tunnelSocket, tunnelArgs } = require('../lib/tunnel-config');
-module.exports = function createWatchdog({ cfg, runCommand, loadConfiguredNodes, TOOLS, MCP_TOKEN }) {
+const platform = require('../lib/platform');
+const { TunnelManager } = require('../lib/ssh-tunnels');
+module.exports = function createWatchdog({ cfg, runCommand, loadConfiguredNodes, TOOLS, MCP_TOKEN, windows = platform.isWindows, tunnelManager }) {
+const windowsTunnels = windows ? (tunnelManager || new TunnelManager(cfg)) : null;
 const PORT = cfg.MCP_PORT;
 const EDA_PORT = cfg.EDA_PORT;
 const SYNCTHING_URL = cfg.SYNCTHING_URL;
@@ -29,8 +32,9 @@ async function ensureEasyEdaBridgeDetailed() {
   if (bridgeScript) {
     const child = spawn(process.execPath, [bridgeScript], {
       detached: true,
+      windowsHide: true,
       stdio: 'ignore',
-      env: { ...process.env },
+      env: platform.childEnv(),
     });
     child.unref();
     await new Promise((r) => setTimeout(r, 1000));
@@ -329,7 +333,7 @@ function nodeTunnelSock(node) { return tunnelSocket(cfg, node); }
 async function probeNode(node, timeoutMs = 5500) {
   const sock = nodeTunnelSock(node);
   const t0 = Date.now();
-  const res = await runCommand('ssh', ['-S', sock, '-o', 'ConnectTimeout=4', node.sshHost, REMOTE_PROBE_CMD], { timeoutMs });
+  const res = await runCommand('ssh', [...(windows ? ['-o', 'BatchMode=yes', '-o', 'ClearAllForwardings=yes', '-o', 'ControlMaster=no', '-o', 'ControlPath=none'] : ['-S', sock]), '-o', 'ConnectTimeout=4', node.sshHost, REMOTE_PROBE_CMD], { timeoutMs });
   const rtt = Date.now() - t0;
   let data = null;
   if (res.exitCode === 0 && res.stdout) {
@@ -349,19 +353,21 @@ async function healNodeTunnel(node) {
     const current = loadConfiguredNodes().find((n) => n.id === node.id && n.enabled && n.sshHost === node.sshHost);
     if (!current) throw new Error(`Node ${node.id} is disabled or changed`);
     const sock = nodeTunnelSock(node);
-    await runCommand('ssh', ['-S', sock, '-O', 'exit', node.sshHost], { timeoutMs: 2000 });
+    if (windows) await windowsTunnels.stop(node.id);
+    else await runCommand('ssh', ['-S', sock, '-O', 'exit', node.sshHost], { timeoutMs: 2000 });
     // Close only the ControlMaster owned by this instance. A port collision is an
     // error to report, never a reason to kill arbitrary remote sshd processes.
-    const tunnel = await runCommand('ssh', tunnelArgs(cfg, node), { timeoutMs: 7000 });
+    const tunnel = windows ? (await windowsTunnels.ensure(node), { exitCode: 0 }) : await runCommand('ssh', tunnelArgs(cfg, node, false), { timeoutMs: 7000 });
     if (tunnel.exitCode !== 0) throw new Error(`Tunnel failed for ${node.id}: check remote port ownership`);
     const program = buildRemoteConfigPy({ node, port: PORT, token: MCP_TOKEN, autoAllowHostExec: cfg.AUTO_ALLOW_HOST_EXEC });
     const result = await runCommand('ssh', [
-      '-S', sock, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=4', node.sshHost, 'python3 -',
+      ...(windows ? ['-o', 'ClearAllForwardings=yes', '-o', 'ControlMaster=no', '-o', 'ControlPath=none'] : ['-S', sock]), '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=4', node.sshHost, 'python3 -',
     ], { timeoutMs: 6000, input: program });
     if (result.exitCode !== 0) throw new Error(`Remote MCP configuration failed for ${node.id}`);
     const stillEnabled = loadConfiguredNodes().some((n) => n.id === node.id && n.enabled && n.sshHost === node.sshHost);
     if (!stillEnabled) {
-      await runCommand('ssh', ['-S', sock, '-O', 'exit', node.sshHost], { timeoutMs: 2000 });
+      if (windows) await windowsTunnels.stop(node.id);
+      else await runCommand('ssh', ['-S', sock, '-O', 'exit', node.sshHost], { timeoutMs: 2000 });
       throw new Error(`Node ${node.id} changed during tunnel setup`);
     }
 
@@ -377,6 +383,7 @@ async function runSystemWatchdogCycle(forceHeal = false) {
   watchdogRunning = true;
   try {
     const nodes = loadConfiguredNodes().filter((n) => n.enabled && n.sshHost);
+    if (windows) await windowsTunnels.reconcile(nodes);
     const [edaInfo] = await Promise.all([ensureEasyEdaBridgeDetailed(), checkSyncthingStatus(nodes)]);
 
     const nodesStatus = {};
@@ -387,7 +394,7 @@ async function runSystemWatchdogCycle(forceHeal = false) {
       if (!forceHeal) {
         ({ data, pingMs } = await probeNode(node));
       }
-      const needHeal = forceHeal || !data || !data.mcpOk;
+      const needHeal = forceHeal || !data || !data.mcpOk || (windows && !windowsTunnels.isRunning(node));
       const sinceHeal = Date.now() - (lastNodeHealAt.get(node.id) || 0);
       if (needHeal && (forceHeal || sinceHeal > 15000)) {
         systemStatusState.healing = true;
@@ -466,5 +473,5 @@ function startBridgeAndTunnelWatchdog() {
 
 
 
-return { ensureEasyEdaBridge, nodeTunnelSock, healNodeTunnel, runSystemWatchdogCycle, startBridgeAndTunnelWatchdog, systemStatusState };
+return { ensureEasyEdaBridge, nodeTunnelSock, healNodeTunnel, ensureNodeTunnel: node => windows ? windowsTunnels.ensure(node) : healNodeTunnel(node, false), runSystemWatchdogCycle, startBridgeAndTunnelWatchdog, systemStatusState, stop: async () => { if (windows) await windowsTunnels.stopAll(); } };
 };

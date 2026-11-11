@@ -20,7 +20,7 @@ npm test          # isolated behavioral and HTTP regression tests
 npm run check     # node --check + bash -n on all scripts
 ```
 
-CI runs the same plus a smoke test (`scripts/smoke-test.sh`): fresh data dir → servers start → API, auth and Host/Origin guards behave.
+CI runs the checks on Linux and Windows, the macOS shell smoke test, and Windows packaging with self-contained native dependency verification. `npm run test:smoke` runs the portable HTTP/auth and native PTY checks. See [Windows development](docs/WINDOWS11.md) for PowerShell setup.
 
 ## Guidelines
 

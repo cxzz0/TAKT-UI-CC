@@ -34,7 +34,7 @@ test('concurrent first starts share one complete token and repair private permis
   assert.match(token, /^[a-f0-9]{48}$/);
   fs.chmodSync(path.join(directory, 'mcp-token'), 0o644);
   assert.equal(getOrCreateToken(directory), token);
-  assert.equal(fs.statSync(path.join(directory, 'mcp-token')).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(directory, 'mcp-token')).mode & 0o777, 0o600);
   fs.writeFileSync(path.join(directory, 'mcp-token'), '');
   assert.throws(() => getOrCreateToken(directory), /Invalid MCP token/);
 });
@@ -65,7 +65,7 @@ test('provisioning migrates old broad allow rules, transports auth, preserves un
     const script = buildRemoteConfigPy({ node: { id: 'node-two', remoteWorkDir: path.join(directory, 'work') }, port: 19001, token: 'test-secret', autoAllowHostExec: allow });
     // Mock only the remote home lookup. No real user files or SSH destinations are touched.
     const wrapper = `import os\nfrom unittest.mock import patch\nwith patch('os.path.expanduser', side_effect=lambda p: ${JSON.stringify(directory)} + p[1:] if p.startswith('~') else p):\n    exec(${JSON.stringify(script)})\n`;
-    const result = spawnSync('python3', ['-'], { input: wrapper, encoding: 'utf8' });
+    const result = spawnSync(process.platform === 'win32' ? 'python' : 'python3', ['-'], { input: wrapper, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
     assert.ok(!result.stdout.includes('test-secret'));
   };
@@ -79,7 +79,7 @@ test('provisioning migrates old broad allow rules, transports auth, preserves un
   assert.deepEqual(settings.permissions.allow, ['Read']);
   assert.deepEqual(settings.permissions.ask, ['Bash', 'mcp__mac-industrial__mac_host_exec']);
   assert.deepEqual(settings.permissions.deny, ['mcp__mac-industrial__mac_host_exec']);
-  for (const file of [settingsPath, path.join(directory, '.claude.json')]) assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') for (const file of [settingsPath, path.join(directory, '.claude.json')]) assert.equal(fs.statSync(file).mode & 0o777, 0o600);
   run(true);
   settings = JSON.parse(fs.readFileSync(settingsPath));
   assert.deepEqual(settings.permissions.allow, ['Read', 'mcp__mac-industrial__mac_host_exec']);
@@ -91,7 +91,7 @@ test('corrupt remote config is not overwritten during migration', (t) => {
   fs.writeFileSync(path.join(directory, '.claude.json'), '{broken');
   const script = buildRemoteConfigPy({ node: { id: 'n', remoteWorkDir: directory }, port: 19001, token: 'test-secret' });
   const wrapper = `from unittest.mock import patch\nwith patch('os.path.expanduser', side_effect=lambda p: ${JSON.stringify(directory)} + p[1:]):\n    exec(${JSON.stringify(script)})\n`;
-  const result = spawnSync('python3', ['-'], { input: wrapper, encoding: 'utf8' });
+  const result = spawnSync(process.platform === 'win32' ? 'python' : 'python3', ['-'], { input: wrapper, encoding: 'utf8' });
   assert.notEqual(result.status, 0);
   assert.equal(fs.readFileSync(path.join(directory, '.claude.json'), 'utf8'), '{broken');
 });
@@ -113,7 +113,8 @@ test('overlapping tool executions retain their node after await and never use an
     assert.equal(context.resolveWorkPath('/root/work/only-b.txt'), path.join(n.localWorkDir, 'only-b.txt'));
     const result = await execute('mac_screen_capture', { return_inline_image: false, max_dimension_px: -1, output_filename: 'test.png' });
     assert.equal(context.getActiveNodeConfig().id, n.id);
-    assert.equal(context.rewriteScriptPaths(`'/srv/${n.id}/x' '/root/work/x'`), `'${n.localWorkDir}/x' '${n.localWorkDir}/x'`);
+    const scriptRoot = n.localWorkDir.replaceAll('\\', '/');
+    assert.equal(context.rewriteScriptPaths(`'/srv/${n.id}/x' '/root/work/x'`), `'${scriptRoot}/x' '${scriptRoot}/x'`);
     return result;
   })));
   for (let i = 0; i < nodes.length; i++) {
@@ -155,7 +156,8 @@ test('tunnel sockets distinguish data directories and ports; reverse binds are e
 });
 
 test('database upgrades legacy primary keys and scopes rename/delete to one machine', (t) => {
-  const filename = path.join(temp(t), 'db.sqlite');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'takt-db-'));
+  const filename = path.join(directory, 'db.sqlite');
   const { DatabaseSync } = require('node:sqlite');
   const old = new DatabaseSync(filename);
   old.exec(`CREATE TABLE sessions (id TEXT PRIMARY KEY, node_id TEXT NOT NULL, project_path TEXT NOT NULL,
@@ -164,7 +166,7 @@ test('database upgrades legacy primary keys and scopes rename/delete to one mach
     INSERT INTO sessions (id,node_id,project_path,title,updated_at) VALUES ('same','a','/root/work','A',1);`);
   old.close();
   const db = require('../server/repositories/workbench-db')(filename);
-  t.after(() => db.workbenchDb.close());
+  t.after(() => { db.workbenchDb.close(); fs.rmSync(directory, { recursive: true, force: true }); });
   db.stmtRegisterLocalSession.run('same', 'b', '/root/work', 'B', 2);
   db.stmtRenameSession.run('renamed', 'renamed', 3, 'a', 'same');
   db.stmtSoftDeleteSession.run(4, 'a', 'same');
@@ -176,7 +178,7 @@ test('tunnel repair is single-flight, authenticates over stdin and never kills p
   const cfg = config(temp(t));
   const node = { id: 'a', sshHost: 'my-host', remoteWorkDir: '/root/work', enabled: true };
   const calls = [];
-  const watchdog = require('../mcp-server/watchdog')({ cfg, TOOLS: [], MCP_TOKEN: 'test-secret', loadConfiguredNodes: () => [node],
+  const watchdog = require('../mcp-server/watchdog')({ cfg, windows: false, TOOLS: [], MCP_TOKEN: 'test-secret', loadConfiguredNodes: () => [node],
     runCommand: async (cmd, args, options) => { calls.push({ cmd, args, options }); await Promise.resolve(); return { exitCode: 0, stdout: '', stderr: '' }; },
   });
   await Promise.all([watchdog.healNodeTunnel(node), watchdog.healNodeTunnel(node)]);
@@ -186,14 +188,14 @@ test('tunnel repair is single-flight, authenticates over stdin and never kills p
   assert.ok(refresh.options.input.includes('save_private'));
   assert.ok(!calls.find((c) => c.args.includes('-Nf')).args.some((a) => a.includes(String(cfg.EDA_PORT))));
   const failing = [];
-  const broken = require('../mcp-server/watchdog')({ cfg, TOOLS: [], MCP_TOKEN: 'test-secret', loadConfiguredNodes: () => [node],
+  const broken = require('../mcp-server/watchdog')({ cfg, windows: false, TOOLS: [], MCP_TOKEN: 'test-secret', loadConfiguredNodes: () => [node],
     runCommand: async (cmd, args) => { failing.push({ cmd, args }); return { exitCode: args.includes('-Nf') ? 1 : 0 }; },
   });
   await assert.rejects(broken.healNodeTunnel(node), /remote port ownership/);
   assert.equal(failing.length, 2);
 });
 
-test('native launch configuration resolves user env before deriving runtime paths', async (t) => {
+test('native launch configuration resolves user env before deriving runtime paths', { skip: process.platform === 'win32' }, async (t) => {
   const directory = temp(t);
   const alternate = path.join(directory, 'other');
   fs.writeFileSync(path.join(directory, 'env'), `TAKT_PORT=31999\nTAKT_HOME='${alternate}'\n`);

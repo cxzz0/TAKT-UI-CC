@@ -1,9 +1,9 @@
 const globals = require('globals');
 
 module.exports = [
-  { ignores: ['node_modules/**', 'build/**', 'desktop/**', 'server/public/vendor/**'] },
+  { ignores: ['node_modules/**', 'build/**', 'dist/**', 'desktop/**', 'server/public/vendor/**'] },
   {
-    files: ['**/*.js'],
+    files: ['**/*.js', '**/*.cjs'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'commonjs',

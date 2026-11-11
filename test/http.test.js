@@ -29,7 +29,7 @@ function request(base, route, { method = 'GET', headers = {}, body } = {}) {
   });
 }
 
-test('isolated workbench and MCP: auth, assets, node-scoped RPC and session mutations', { timeout: 20000 }, async (t) => {
+test('isolated workbench and MCP: auth, assets, node-scoped RPC and session mutations', { timeout: 60000 }, async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'takt-http-'));
   const root = path.resolve(__dirname, '..');
   const [uiPort, mcpPort] = await freePorts();
@@ -54,12 +54,14 @@ test('isolated workbench and MCP: auth, assets, node-scoped RPC and session muta
   }
   for (const url of [ui + '/api/health', mcp + '/health']) {
     let ready = false;
-    for (let n = 0; n < 80; n++) {
-      try { ready = (await fetch(url)).ok; } catch {}
+    const deadline = Date.now() + 25000;
+    while (Date.now() < deadline) {
+      try { ready = (await fetch(url, { signal: AbortSignal.timeout(1000) })).ok; } catch {}
       if (ready) break;
+      if (children.some(child => child.exitCode !== null)) break;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    assert.ok(ready, logs);
+    assert.ok(ready, `Service did not become ready: ${url}\n${logs}`);
   }
   const token = fs.readFileSync(path.join(directory, 'mcp-token'), 'utf8').trim();
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
@@ -82,7 +84,8 @@ test('isolated workbench and MCP: auth, assets, node-scoped RPC and session muta
   assert.equal((await request(mcp, '/mcp', { method: 'POST', headers: { 'x-takt-token': token }, body: rpc })).status, 401);
   assert.equal((await request(mcp, '/mcp', { method: 'POST', headers: { ...headers, Origin: 'http://127.0.0.1:9999' }, body: rpc })).status, 403);
   const authorized = await request(mcp, '/mcp', { method: 'POST', headers, body: rpc });
-  assert.equal(authorized.status, 200); assert.equal(authorized.json().result.tools.length, 23);
+  assert.equal(authorized.status, 200); assert.equal(authorized.json().result.tools.length, process.platform === 'win32' ? 21 : 23);
+  if (process.platform === 'win32') assert.ok(!authorized.json().result.tools.some(tool => tool.name.startsWith('xcode_')));
   assert.equal(authorized.headers['access-control-allow-origin'], undefined);
   assert.equal((await request(mcp, '/remote-desktop', { headers })).status, 405);
   // The UI proxy supplies auth on the server, and preserves downstream validation.
@@ -98,10 +101,19 @@ test('isolated workbench and MCP: auth, assets, node-scoped RPC and session muta
   assert.ok(fileLists[0].includes('a.txt') && !fileLists[0].includes('b.txt'));
   assert.ok(fileLists[1].includes('b.txt') && !fileLists[1].includes('a.txt'));
   assert.equal((await request(mcp, '/mcp?node=missing', { method: 'POST', headers, body: { ...rpc, method: 'tools/call', params: { name: 'work_sync_status' } } })).status, 400);
-  fs.symlinkSync(path.join(directory, 'mcp-token'), path.join(directory, 'work', 'secret'));
-  assert.equal((await request(mcp, '/work/secret?node=node-1')).status, 404);
+  fs.symlinkSync(directory, path.join(directory, 'work', 'secret'), process.platform === 'win32' ? 'junction' : 'dir');
+  assert.equal((await request(mcp, '/work/secret/mcp-token?node=node-1')).status, 404);
   assert.equal((await request(mcp, '/work/a.txt?node=node-1')).text, 'a');
   assert.equal((await request(mcp, '/work/a.txt?node=node-2')).status, 404);
+  fs.writeFileSync(path.join(directory, 'work', '中文 file.txt'), 'preview OK');
+  for (const file of ['/root/work/中文 file.txt', path.join(directory, 'work', '中文 file.txt')]) {
+    const query = new URLSearchParams({ path: file, cwd: '/root/work', nodeId: 'node-1' });
+    assert.equal((await request(ui, '/api/file-content?' + query)).json().content, 'preview OK');
+  }
+  const command = process.platform === 'win32' ? "Write-Output ('TAKT_' + 'HOST_OK')" : "printf 'TAKT_HOST_OK'";
+  const executed = await request(mcp, '/mcp?node=node-1', { method: 'POST', headers, body: { ...rpc, method: 'tools/call', params: { name: 'mac_host_exec', arguments: { command } } } });
+  assert.equal(executed.json().result.isError, false);
+  assert.ok(executed.json().result.content[0].text.includes('TAKT_HOST_OK'));
   for (const nodeId of ['node-1', 'node-2']) assert.equal((await request(ui, '/api/sessions/register', {
     method: 'POST', body: { id: 'same-session', nodeId, title: 'original', cwd: '/root/work' },
   })).status, 200);
@@ -119,4 +131,8 @@ test('isolated workbench and MCP: auth, assets, node-scoped RPC and session muta
   assert.equal((await request(ui, '/api/health')).status, 200);
   assert.ok(children.every((c) => c.exitCode === null), logs);
   assert.ok(!logs.includes(token));
+  for (const [base, route] of [[ui, '/api/shutdown'], [mcp, '/shutdown']]) {
+    assert.equal((await request(base, route, { method: 'POST' })).status, 401);
+    assert.equal((await request(base, route, { method: 'POST', headers })).status, 200);
+  }
 });
