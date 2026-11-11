@@ -1,5 +1,7 @@
 # 个人多机器客户端升级说明
 
+Windows 11 用户请先阅读 [Windows 安装与打包指南](../WINDOWS11.md)。Windows 桌面壳和本机工具保留本分支的鉴权、远端配置迁移与节点隔离规则。
+
 本次保留 SSH、tmux、Syncthing 和 Claude Code 的运行方式，完善个人工作台的安全与可维护性。完整模块表和技术细节见[英文说明](../PERSONAL-CLIENT-UPGRADE.md)。
 
 ## 已实现

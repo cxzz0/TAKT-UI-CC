@@ -63,6 +63,8 @@ flowchart LR
 
 ## 环境要求
 
+**Windows 11 用户：**参见 [Windows 安装、启动和打包指南](docs/WINDOWS11.md)。本分支支持 Electron 桌面壳、ConPTY、Windows OpenSSH 和 21 个本机 MCP 工具，并保留 codex 分支的 Bearer 鉴权及多节点隔离。源码安装后执行 `npm run desktop`，也可双击 `start-windows.cmd`。
+
 **本机（Mac）：**
 - macOS 13+（桌面 App 与多数 MCP 工具仅 macOS；Web 界面本身也可在 Linux 浏览器运行）
 - **Node.js ≥ 22.13**（使用内置 `node:sqlite`）：`brew install node`

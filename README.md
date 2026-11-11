@@ -16,6 +16,8 @@ local file preview, two-way file sync — and a local MCP server your remote Cla
 
 > The UI language is currently **Chinese (简体中文)**. All code, configuration and docs are in English/Chinese; contributions that add an i18n layer are very welcome.
 
+**Windows 11:** see the [Windows setup and packaging guide (中文)](docs/WINDOWS11.md). This branch supports an Electron desktop shell, ConPTY, Windows OpenSSH and 21 local MCP tools while preserving the codex branch's bearer authentication and per-node isolation. After `npm ci`, run `npm run desktop` or double-click `start-windows.cmd`.
+
 ---
 
 ## Why

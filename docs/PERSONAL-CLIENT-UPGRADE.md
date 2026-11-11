@@ -1,6 +1,6 @@
 # Personal multi-machine client: upgrade notes
 
-This fork keeps the existing execution model: macOS UI + Node workbench, SSH/tmux on trusted Linux machines, Syncthing file mirrors, and local MCP tools. It does not add accounts, a task scheduler, or a replacement agent runtime.
+This fork keeps the existing execution model: Windows/Electron or macOS UI + Node workbench, SSH/tmux on trusted Linux machines, Syncthing file mirrors, and local MCP tools. See [Windows setup](WINDOWS11.md) for the native Windows client. It does not add accounts, a task scheduler, or a replacement agent runtime.
 
 ## What changed
 

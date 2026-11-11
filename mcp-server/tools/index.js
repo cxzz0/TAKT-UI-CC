@@ -72,7 +72,7 @@ if scene.render.engine == 'CYCLES':
     scene.cycles.samples = ${samples}
     try:
         prefs = bpy.context.preferences.addons['cycles'].preferences
-        prefs.compute_device_type = 'METAL'
+        prefs.compute_device_type = '${process.platform === 'win32' ? 'CUDA' : 'METAL'}'
         prefs.get_devices()
         for d in prefs.devices:
             d.use = True

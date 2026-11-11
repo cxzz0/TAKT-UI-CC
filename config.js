@@ -15,6 +15,10 @@ const TAKT_HOME = path.resolve(process.env.TAKT_HOME || path.join(HOME, '.takt-a
 
 function syncthingConfigCandidates() {
   return [
+    ...(process.platform === 'win32' ? [
+      path.join(process.env.LOCALAPPDATA || path.join(HOME, 'AppData/Local'), 'Syncthing/config.xml'),
+      path.join(process.env.APPDATA || path.join(HOME, 'AppData/Roaming'), 'Syncthing/config.xml'),
+    ] : []),
     path.join(HOME, 'Library/Application Support/Syncthing/config.xml'), // macOS
     path.join(HOME, '.local/state/syncthing/config.xml'), // Linux (new)
     path.join(HOME, '.config/syncthing/config.xml'), // Linux (old)
@@ -77,5 +81,6 @@ module.exports = {
   // Optional external tool locations for the MCP tool pack
   EASYEDA_BRIDGE_SCRIPT: process.env.TAKT_EASYEDA_BRIDGE || '',
   IDF_EXPORT_SH: process.env.TAKT_IDF_EXPORT || path.join(HOME, 'esp/esp-idf/export.sh'),
+  IDF_EXPORT_PS1: process.env.TAKT_IDF_EXPORT_PS1 || '',
   ESP_PYTHON_ENV: process.env.TAKT_ESP_PYTHON_ENV || path.join(HOME, '.espressif/python_env/idf5.1_py3.9_env'),
 };
